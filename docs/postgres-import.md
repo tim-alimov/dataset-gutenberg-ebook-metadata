@@ -40,6 +40,12 @@ providers avoid timing out during large imports.
 
 ## Options
 
+Use another input directory:
+
+```sh
+python3 scripts/load_postgres.py --input-dir /path/to/csv-files
+```
+
 Use another schema:
 
 ```sh
@@ -57,6 +63,9 @@ Skip table creation:
 ```sh
 python3 scripts/load_postgres.py --no-create
 ```
+
+`--no-create` also skips index creation. Use it only when the target schema,
+tables, constraints, and indexes are already managed elsewhere.
 
 Append without truncating:
 
@@ -95,9 +104,30 @@ book_categories
 formats
 ```
 
-Foreign keys are created for join tables and format rows. The loader also creates
-indexes for common lookup fields such as book title, author name, category name,
-category type, and format MIME type.
+Foreign keys are created for join tables and format rows. The loader creates
+indexes after loading data so large imports avoid per-row index maintenance.
+
+The index set is intended for online library API patterns:
+
+- direct book lookups by primary key or `gutenberg_id`
+- title, author, and category browsing
+- title, author, and category text search with PostgreSQL `pg_trgm` when the
+  extension is available
+- author/category joins from list endpoints
+- filters by category type, author role, language, media type, rights, and MIME
+  type
+- sorting by newest issue date or highest download count
+
+Language filtering uses a GIN expression index over the CSV-style language list.
+For example, an API query can use:
+
+```sql
+WHERE string_to_array(languages, '; ') @> ARRAY['en']
+```
+
+The loader attempts to enable `pg_trgm` for fast `ILIKE`/similarity search. If a
+hosted Postgres provider does not allow that extension, the loader logs a warning
+and still creates the core relational indexes.
 
 ## Important Behavior
 

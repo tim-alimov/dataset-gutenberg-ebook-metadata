@@ -1,13 +1,12 @@
 # Data Source
 
-The source of truth for this dataset is the official Project Gutenberg RDF
-metadata archive.
+The source of truth is the official Project Gutenberg RDF metadata archive:
 
 ```text
 https://www.gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
 ```
 
-The raw file belongs in:
+Store the archive at:
 
 ```text
 data/raw/rdf-files.tar.bz2
@@ -19,29 +18,35 @@ Download it with:
 python3 scripts/download_raw_data.py
 ```
 
-## Why Official RDF
+Useful downloader options:
 
-The official RDF archive is used because it is the richest official metadata
-source for Project Gutenberg ebooks. It contains book records, people, subjects,
-bookshelves, languages, rights, download counts, and file-format URLs.
+```sh
+python3 scripts/download_raw_data.py --force
+python3 scripts/download_raw_data.py --output /path/to/rdf-files.tar.bz2
+python3 scripts/download_raw_data.py --retries 5
+```
 
-Using the official source makes the dataset more reproducible than building it
-from an unofficial API response.
+The downloader writes to a temporary `.part` file and replaces the final archive
+only after a complete download.
 
-## Gutendex
+## Why RDF
 
-Gutendex is a useful JSON API for Project Gutenberg metadata, but it is not the
-source of truth for this dataset.
+The RDF archive is the richest official bulk metadata source for Project
+Gutenberg. It includes book records, people, subjects, bookshelves, languages,
+rights, download counts, and file-format URLs.
 
-During early testing, a list-style Gutendex metadata request was slow from our
-environment. A single-book request was much faster. Because this project is
-focused on bulk metadata access, the official RDF archive is a better source for
-the generated dataset.
+Gutendex is useful for quick JSON lookups, but it is not the dataset source. The
+initial API speed check that motivated local exports is recorded in
+[benchmark.md](benchmark.md).
 
 ## Raw Data Rule
 
-Files in `data/raw` should stay unchanged. The importer reads raw metadata and
-creates generated CSV files in `data/processed`.
+Files in `data/raw` should stay unchanged. Treat them as source inputs, not
+working files.
 
-If the processed files need to change, regenerate them from the raw archive
-instead of editing CSV rows manually.
+If processed CSV files need to change, regenerate them from the raw archive
+instead of editing generated rows manually:
+
+```sh
+python3 scripts/import_rdf_metadata.py
+```

@@ -5,6 +5,17 @@ This dataset exports Project Gutenberg ebook metadata into six CSV tables.
 The structure is relational because one book can have many authors, categories,
 and file formats.
 
+## Relationships
+
+```text
+books.id -> book_authors.book_id -> authors.id
+books.id -> book_categories.book_id -> categories.id
+books.id -> formats.book_id
+```
+
+The CSV files can be used without PostgreSQL, but these relationships describe
+how the tables fit together.
+
 ## books.csv
 
 One row per Project Gutenberg ebook.
@@ -84,3 +95,19 @@ One row per downloadable file format listed in the RDF metadata.
 - `books.id` and `books.gutenberg_id` currently use the same value.
 - The importer skips RDF files inside archive `test/` paths.
 - Duplicate Gutenberg IDs are ignored after the first valid book record.
+
+## Current Generated Size
+
+Current local CSV record counts, excluding headers:
+
+```text
+89833    books.csv
+26823    authors.csv
+42697    categories.csv
+79073    book_authors.csv
+470438   book_categories.csv
+2187291  formats.csv
+```
+
+`formats.csv` is much larger than the book table because Project Gutenberg lists
+many downloadable file variants per ebook.
