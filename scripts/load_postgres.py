@@ -252,20 +252,23 @@ def create_indexes(cur: psycopg.Cursor, schema: str) -> None:
 
 
 def create_search_indexes(cur: psycopg.Cursor, schema: str) -> None:
+    cur.execute("SAVEPOINT pg_trgm_indexes")
     try:
         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        statements = [
+            "CREATE INDEX IF NOT EXISTS books_title_trgm_idx ON {schema}.books USING gin (title gin_trgm_ops)",
+            "CREATE INDEX IF NOT EXISTS authors_name_trgm_idx ON {schema}.authors USING gin (name gin_trgm_ops)",
+            "CREATE INDEX IF NOT EXISTS categories_name_trgm_idx ON {schema}.categories USING gin (name gin_trgm_ops)",
+        ]
+        for statement in statements:
+            cur.execute(sql.SQL(statement).format(schema=sql.Identifier(schema)))
     except psycopg.Error as exc:
         logging.warning("skipping trigram search indexes because pg_trgm is unavailable: %s", exc)
-        cur.connection.rollback()
+        cur.execute("ROLLBACK TO SAVEPOINT pg_trgm_indexes")
+    else:
+        cur.execute("RELEASE SAVEPOINT pg_trgm_indexes")
         return
-
-    statements = [
-        "CREATE INDEX IF NOT EXISTS books_title_trgm_idx ON {schema}.books USING gin (title gin_trgm_ops)",
-        "CREATE INDEX IF NOT EXISTS authors_name_trgm_idx ON {schema}.authors USING gin (name gin_trgm_ops)",
-        "CREATE INDEX IF NOT EXISTS categories_name_trgm_idx ON {schema}.categories USING gin (name gin_trgm_ops)",
-    ]
-    for statement in statements:
-        cur.execute(sql.SQL(statement).format(schema=sql.Identifier(schema)))
+    cur.execute("RELEASE SAVEPOINT pg_trgm_indexes")
 
 
 def truncate_tables(cur: psycopg.Cursor, schema: str) -> None:
