@@ -249,8 +249,6 @@ def truncate_tables(cur: psycopg.Cursor, schema: str) -> None:
 
 def copy_csv(cur: psycopg.Cursor, schema: str, table: str, path: Path) -> None:
     started_at = time.perf_counter()
-    size_mb = path.stat().st_size / 1024 / 1024
-    logging.info("loading %s into %s.%s (%.1f MB)", path, schema, table, size_mb)
     columns = [sql.Identifier(column) for column in TABLE_COLUMNS[table]]
     query = sql.SQL(
         "COPY {}.{} ({}) FROM STDIN WITH (FORMAT csv, HEADER true, NULL '')"
@@ -275,7 +273,7 @@ def copy_csv(cur: psycopg.Cursor, schema: str, table: str, path: Path) -> None:
                     while chunk := handle.read(1024 * 1024):
                         copy.write(chunk)
                         progress.update(len(chunk.encode("utf-8")))
-    logging.info("loaded %s in %.2fs", path, time.perf_counter() - started_at)
+    logging.debug("loaded %s into %s.%s in %.2fs", path, schema, table, time.perf_counter() - started_at)
 
 
 if __name__ == "__main__":
