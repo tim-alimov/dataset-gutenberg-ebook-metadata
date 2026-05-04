@@ -6,7 +6,7 @@ import logging
 import time
 from pathlib import Path
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 RAW_DATA_URL = "https://www.gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2"
 DEFAULT_OUTPUT = Path("data/raw/rdf-files.tar.bz2")
@@ -44,9 +44,6 @@ def download_file(url: str, output: Path, retries: int) -> None:
     last_error: Exception | None = None
 
     for attempt in range(1, retries + 1):
-        if partial.exists():
-            partial.unlink()
-
         try:
             expected_size = stream_download(url, partial)
             actual_size = partial.stat().st_size
@@ -68,34 +65,62 @@ def download_file(url: str, output: Path, retries: int) -> None:
 
 
 def stream_download(url: str, output: Path) -> int | None:
-    with urlopen(url, timeout=60) as response:
+    existing_size = output.stat().st_size if output.exists() else 0
+    request = Request(url)
+    mode = "wb"
+
+    if existing_size:
+        request.add_header("Range", f"bytes={existing_size}-")
+        mode = "ab"
+        logging.info("resuming from %.1f MB", existing_size / 1024 / 1024)
+
+    with urlopen(request, timeout=60) as response:
+        if existing_size and response.status != 206:
+            logging.info("server did not resume download; restarting from 0 MB")
+            existing_size = 0
+            mode = "wb"
+
         expected_size = response.headers.get("Content-Length")
-        expected_bytes = int(expected_size) if expected_size else None
+        expected_bytes = total_size(response, expected_size, existing_size)
         downloaded = 0
         next_log_at = CHUNK_SIZE * 10
 
-        with output.open("wb") as handle:
+        with output.open(mode) as handle:
             while True:
                 chunk = response.read(CHUNK_SIZE)
                 if not chunk:
                     break
                 handle.write(chunk)
                 downloaded += len(chunk)
+                total_downloaded = existing_size + downloaded
 
-                if downloaded >= next_log_at:
+                if total_downloaded >= next_log_at:
                     if expected_bytes:
-                        percent = downloaded / expected_bytes * 100
+                        percent = total_downloaded / expected_bytes * 100
                         logging.info(
                             "downloaded %.1f/%.1f MB (%.1f%%)",
-                            downloaded / 1024 / 1024,
+                            total_downloaded / 1024 / 1024,
                             expected_bytes / 1024 / 1024,
                             percent,
                         )
                     else:
-                        logging.info("downloaded %.1f MB", downloaded / 1024 / 1024)
+                        logging.info("downloaded %.1f MB", total_downloaded / 1024 / 1024)
                     next_log_at += CHUNK_SIZE * 10
 
         return expected_bytes
+
+
+def total_size(response, content_length: str | None, existing_size: int) -> int | None:
+    content_range = response.headers.get("Content-Range")
+    if content_range and "/" in content_range:
+        total = content_range.rsplit("/", 1)[1]
+        if total.isdigit():
+            return int(total)
+
+    if content_length and content_length.isdigit():
+        return existing_size + int(content_length)
+
+    return None
 
 
 if __name__ == "__main__":
