@@ -227,13 +227,42 @@ def create_tables(cur: psycopg.Cursor, schema: str) -> None:
 def create_indexes(cur: psycopg.Cursor, schema: str) -> None:
     statements = [
         "CREATE INDEX IF NOT EXISTS books_title_idx ON {schema}.books USING btree (title)",
+        "CREATE INDEX IF NOT EXISTS books_issued_idx ON {schema}.books USING btree (issued DESC NULLS LAST, id)",
+        "CREATE INDEX IF NOT EXISTS books_download_count_idx ON {schema}.books USING btree (download_count DESC NULLS LAST, id)",
+        "CREATE INDEX IF NOT EXISTS books_media_type_idx ON {schema}.books USING btree (media_type)",
+        "CREATE INDEX IF NOT EXISTS books_rights_idx ON {schema}.books USING btree (rights)",
+        "CREATE INDEX IF NOT EXISTS books_languages_gin_idx ON {schema}.books USING gin (string_to_array(languages, '; '))",
+        "CREATE INDEX IF NOT EXISTS authors_source_id_idx ON {schema}.authors USING btree (source_id)",
         "CREATE INDEX IF NOT EXISTS authors_name_idx ON {schema}.authors USING btree (name)",
         "CREATE INDEX IF NOT EXISTS categories_name_idx ON {schema}.categories USING btree (name)",
         "CREATE INDEX IF NOT EXISTS categories_type_idx ON {schema}.categories USING btree (type)",
+        "CREATE INDEX IF NOT EXISTS categories_type_name_idx ON {schema}.categories USING btree (type, name)",
         "CREATE INDEX IF NOT EXISTS book_authors_author_id_idx ON {schema}.book_authors USING btree (author_id)",
+        "CREATE INDEX IF NOT EXISTS book_authors_author_role_book_idx ON {schema}.book_authors USING btree (author_id, role, book_id)",
         "CREATE INDEX IF NOT EXISTS book_categories_category_id_idx ON {schema}.book_categories USING btree (category_id)",
+        "CREATE INDEX IF NOT EXISTS book_categories_category_book_idx ON {schema}.book_categories USING btree (category_id, book_id)",
         "CREATE INDEX IF NOT EXISTS formats_book_id_idx ON {schema}.formats USING btree (book_id)",
         "CREATE INDEX IF NOT EXISTS formats_mime_type_idx ON {schema}.formats USING btree (mime_type)",
+        "CREATE INDEX IF NOT EXISTS formats_mime_type_book_idx ON {schema}.formats USING btree (mime_type, book_id)",
+    ]
+    for statement in statements:
+        cur.execute(sql.SQL(statement).format(schema=sql.Identifier(schema)))
+
+    create_search_indexes(cur, schema)
+
+
+def create_search_indexes(cur: psycopg.Cursor, schema: str) -> None:
+    try:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+    except psycopg.Error as exc:
+        logging.warning("skipping trigram search indexes because pg_trgm is unavailable: %s", exc)
+        cur.connection.rollback()
+        return
+
+    statements = [
+        "CREATE INDEX IF NOT EXISTS books_title_trgm_idx ON {schema}.books USING gin (title gin_trgm_ops)",
+        "CREATE INDEX IF NOT EXISTS authors_name_trgm_idx ON {schema}.authors USING gin (name gin_trgm_ops)",
+        "CREATE INDEX IF NOT EXISTS categories_name_trgm_idx ON {schema}.categories USING gin (name gin_trgm_ops)",
     ]
     for statement in statements:
         cur.execute(sql.SQL(statement).format(schema=sql.Identifier(schema)))

@@ -10,6 +10,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
 NS = {
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "dcterms": "http://purl.org/dc/terms/",
@@ -74,7 +79,10 @@ def main() -> None:
 def iter_books(input_path: Path, limit: int | None = None) -> Iterator[Book]:
     count = 0
     if input_path.is_dir():
-        for path in sorted(input_path.rglob("*.rdf")):
+        paths = [path for path in sorted(input_path.rglob("*.rdf")) if "test" not in path.parts]
+        if limit is not None:
+            paths = paths[:limit]
+        for path in progress_iter(paths, total=len(paths), desc="parse rdf"):
             if "test" in path.parts:
                 continue
             yield parse_rdf(path.read_bytes())
@@ -88,7 +96,15 @@ def iter_books(input_path: Path, limit: int | None = None) -> Iterator[Book]:
         return
 
     with tarfile.open(input_path, "r:*") as archive:
-        for member in archive:
+        members = [
+            member
+            for member in archive
+            if member.isfile() and member.name.endswith(".rdf") and "/test/" not in member.name
+        ]
+        if limit is not None:
+            members = members[:limit]
+
+        for member in progress_iter(members, total=len(members), desc="parse rdf"):
             if not member.isfile() or not member.name.endswith(".rdf"):
                 continue
             if "/test/" in member.name:
@@ -100,6 +116,12 @@ def iter_books(input_path: Path, limit: int | None = None) -> Iterator[Book]:
             count += 1
             if limit is not None and count >= limit:
                 return
+
+
+def progress_iter(items, total: int | None, desc: str):
+    if tqdm is None:
+        return items
+    return tqdm(items, total=total, desc=desc, unit="file")
 
 
 def parse_rdf(content: bytes) -> Book:
@@ -184,12 +206,16 @@ def export_csvs(books: Iterator[Book], output_dir: Path) -> None:
                 }
             )
 
-    write_csv(output_dir / "books.csv", book_rows)
-    write_csv(output_dir / "authors.csv", author_rows)
-    write_csv(output_dir / "categories.csv", category_rows)
-    write_csv(output_dir / "book_authors.csv", dedupe(book_author_rows))
-    write_csv(output_dir / "book_categories.csv", dedupe(book_category_rows))
-    write_csv(output_dir / "formats.csv", format_rows)
+    tables = [
+        ("books.csv", book_rows),
+        ("authors.csv", author_rows),
+        ("categories.csv", category_rows),
+        ("book_authors.csv", dedupe(book_author_rows)),
+        ("book_categories.csv", dedupe(book_category_rows)),
+        ("formats.csv", format_rows),
+    ]
+    for filename, rows in progress_iter(tables, total=len(tables), desc="write csv"):
+        write_csv(output_dir / filename, rows)
 
 
 def get_author_id(

@@ -8,6 +8,11 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
 RAW_DATA_URL = "https://www.gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2"
 DEFAULT_OUTPUT = Path("data/raw/rdf-files.tar.bz2")
 CHUNK_SIZE = 1024 * 1024
@@ -83,31 +88,45 @@ def stream_download(url: str, output: Path) -> int | None:
         expected_size = response.headers.get("Content-Length")
         expected_bytes = total_size(response, expected_size, existing_size)
         downloaded = 0
-        next_log_at = CHUNK_SIZE * 10
 
         with output.open(mode) as handle:
-            while True:
-                chunk = response.read(CHUNK_SIZE)
-                if not chunk:
-                    break
-                handle.write(chunk)
-                downloaded += len(chunk)
-                total_downloaded = existing_size + downloaded
-
-                if total_downloaded >= next_log_at:
-                    if expected_bytes:
-                        percent = total_downloaded / expected_bytes * 100
-                        logging.info(
-                            "downloaded %.1f/%.1f MB (%.1f%%)",
-                            total_downloaded / 1024 / 1024,
-                            expected_bytes / 1024 / 1024,
-                            percent,
-                        )
-                    else:
-                        logging.info("downloaded %.1f MB", total_downloaded / 1024 / 1024)
-                    next_log_at += CHUNK_SIZE * 10
+            progress = progress_bar(
+                total=expected_bytes,
+                initial=existing_size,
+                desc="rdf-files.tar.bz2",
+            )
+            with progress:
+                while True:
+                    chunk = response.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    if progress is not None:
+                        progress.update(len(chunk))
 
         return expected_bytes
+
+
+def progress_bar(total: int | None, initial: int, desc: str):
+    if tqdm is None:
+        return null_progress()
+    return tqdm(
+        total=total,
+        initial=initial,
+        desc=desc,
+        unit="B",
+        unit_scale=True,
+        unit_divisor=1024,
+    )
+
+
+class null_progress:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, *args):
+        return False
 
 
 def total_size(response, content_length: str | None, existing_size: int) -> int | None:
