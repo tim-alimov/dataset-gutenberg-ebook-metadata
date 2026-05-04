@@ -48,6 +48,7 @@ data/
   processed/    generated CSV files
 docs/           project, schema, source, import, and benchmark notes
 scripts/
+  download_raw_data.py
   import_rdf_metadata.py
   load_postgres.py
 ```
@@ -77,8 +78,13 @@ If you want to regenerate the dataset yourself, first download the official RDF
 archive:
 
 ```sh
-curl -L -o data/raw/rdf-files.tar.bz2 \
-  https://www.gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2
+python3 scripts/download_raw_data.py
+```
+
+To force a fresh download:
+
+```sh
+python3 scripts/download_raw_data.py --force
 ```
 
 Run:

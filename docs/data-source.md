@@ -13,6 +13,12 @@ The raw file belongs in:
 data/raw/rdf-files.tar.bz2
 ```
 
+Download it with:
+
+```sh
+python3 scripts/download_raw_data.py
+```
+
 ## Why Official RDF
 
 The official RDF archive is used because it is the richest official metadata
