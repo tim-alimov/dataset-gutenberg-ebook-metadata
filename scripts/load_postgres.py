@@ -17,6 +17,11 @@ except ImportError as exc:
         "python3 -m pip install -r requirements.txt"
     ) from exc
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
 
 LOAD_ORDER = [
     "books",
@@ -53,7 +58,9 @@ def main() -> None:
     parser.add_argument("--schema", default="public")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--statement-timeout", default="0")
     parser.add_argument("--no-create", action="store_true")
+    parser.add_argument("--no-indexes", action="store_true")
     parser.add_argument("--no-truncate", action="store_true")
     args = parser.parse_args()
 
@@ -75,20 +82,28 @@ def main() -> None:
     logging.info("connecting to database")
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cur:
+            configure_session(cur, args.statement_timeout)
+            conn.commit()
+
             if not args.no_create:
                 logging.info("creating schema and tables in schema=%s", args.schema)
                 create_schema(cur, args.schema)
                 create_tables(cur, args.schema)
-                create_indexes(cur, args.schema)
+                conn.commit()
 
             if not args.no_truncate:
                 logging.info("truncating existing data in schema=%s", args.schema)
                 truncate_tables(cur, args.schema)
+                conn.commit()
 
             for table in LOAD_ORDER:
                 copy_csv(cur, args.schema, table, args.input_dir / f"{table}.csv")
+                conn.commit()
 
-        conn.commit()
+            if not args.no_create and not args.no_indexes:
+                logging.info("creating indexes in schema=%s", args.schema)
+                create_indexes(cur, args.schema)
+                conn.commit()
     logging.info("finished postgres load in %.2fs", time.perf_counter() - started_at)
 
 
@@ -116,6 +131,11 @@ def assert_required_files(input_dir: Path) -> None:
     missing = [f"{table}.csv" for table in LOAD_ORDER if not (input_dir / f"{table}.csv").exists()]
     if missing:
         raise SystemExit(f"Missing CSV files in {input_dir}: {', '.join(missing)}")
+
+
+def configure_session(cur: psycopg.Cursor, statement_timeout: str) -> None:
+    cur.execute(sql.SQL("SET statement_timeout = {}").format(sql.Literal(statement_timeout)))
+    logging.info("statement_timeout set to %s", statement_timeout)
 
 
 def create_schema(cur: psycopg.Cursor, schema: str) -> None:
@@ -241,8 +261,20 @@ def copy_csv(cur: psycopg.Cursor, schema: str, table: str, path: Path) -> None:
     )
     with path.open("r", encoding="utf-8", newline="") as handle:
         with cur.copy(query) as copy:
-            while chunk := handle.read(1024 * 1024):
-                copy.write(chunk)
+            if tqdm is None:
+                while chunk := handle.read(1024 * 1024):
+                    copy.write(chunk)
+            else:
+                with tqdm(
+                    total=path.stat().st_size,
+                    desc=table,
+                    unit="B",
+                    unit_scale=True,
+                    unit_divisor=1024,
+                ) as progress:
+                    while chunk := handle.read(1024 * 1024):
+                        copy.write(chunk)
+                        progress.update(len(chunk.encode("utf-8")))
     logging.info("loaded %s in %.2fs", path, time.perf_counter() - started_at)
 
 

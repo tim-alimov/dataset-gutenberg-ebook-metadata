@@ -138,7 +138,10 @@ By default, the loader:
 - reads CSV files from `data/processed`
 - creates tables if they do not exist
 - truncates existing data
+- disables PostgreSQL `statement_timeout` for the session
 - bulk-loads the CSV files using PostgreSQL `COPY`
+- commits after each table is loaded
+- creates indexes after loading data
 
 Use another schema:
 
@@ -168,6 +171,18 @@ Show more detailed loader logs:
 
 ```sh
 python3 scripts/load_postgres.py --log-level DEBUG
+```
+
+Use a custom statement timeout:
+
+```sh
+python3 scripts/load_postgres.py --statement-timeout 30min
+```
+
+Skip index creation:
+
+```sh
+python3 scripts/load_postgres.py --no-indexes
 ```
 
 ## Tables

@@ -31,7 +31,12 @@ By default, the loader:
 - creates the schema and tables if needed
 - creates indexes
 - truncates existing data
+- disables PostgreSQL `statement_timeout` for the session
 - loads CSV data with PostgreSQL `COPY`
+- commits after each table is loaded
+
+Indexes are created after data loading. This is faster and helps hosted Postgres
+providers avoid timing out during large imports.
 
 ## Options
 
@@ -65,6 +70,18 @@ Show more detailed logs:
 python3 scripts/load_postgres.py --log-level DEBUG
 ```
 
+Use a custom statement timeout:
+
+```sh
+python3 scripts/load_postgres.py --statement-timeout 30min
+```
+
+Skip index creation:
+
+```sh
+python3 scripts/load_postgres.py --no-indexes
+```
+
 ## Tables Created
 
 The loader creates:
@@ -89,3 +106,7 @@ truncates before loading. Use `--no-truncate` only when you intentionally want t
 append data.
 
 For normal full refreshes, keep the default truncation behavior.
+
+The loader commits after each table. If a large table such as `formats` fails on
+a hosted provider, already loaded tables remain committed instead of the whole
+import rolling back.
